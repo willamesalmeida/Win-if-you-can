@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <title>Projeto de Computação Gráfica</title>
+  <meta charset="utf-8" />
+</head>
+
+<body>
+  <script src="js/three.js"></script>
+  <script src="js/TrackballControls.js"></script>
+  <script src="js/STLLoader.js"></script>
+  <script src="physi.js"></script>
+  <script src="js/WebGL.js"></script>
+  <script src="js/stats.min.js"></script>
+  <script src="js/THREEx.KeyboardState.js"></script>
+  <script src="js/GLTFLoader.js"></script>
+
+  <script>
+    Physijs.scripts.worker = "./physijs_worker.js";
+    Physijs.scripts.ammo = "./js/ammo.js";
+
+    // Global
+    var container, controls;
+    var camera, scene, renderer;
+    var stats;
+    var clock = new THREE.Clock();
+    var power = false;
+    var esquiva = false;
+    var esquiva_value = 0;
+    var rot = false;
+    var power_value = 0;
+    var rotacao = 0;
+    var bola;
+    var posicao_bola_sky = 0;
+    var power_less = 0.05;
+
+    // Cenário 3
+    var planos_geometry = {};
+    var planos_obj = {};
+    var cenario3_axis_x = 0
+    var cenario3_axis_y = 0;
+    var cenario3_axis_z = 20;
+
+    // Cenário 1
+    var cenario1_eixo_z = 0;
+    var cenario1_eixo_y = 0;
+    var cenario1_eixo_x = 0;
+    var start = false;
+    var keyboard = new THREEx.KeyboardState();
+
+    // Troca de mapas
+    var mapa1 = true;
+    var mapa3 = false;
+
+
+    // Inicialização
+    init();
+    animate();
+
+    function init() {
+      container = document.createElement("div");
+      document.body.appendChild(container);
+
+      // Definição de câmera
+      camera = new THREE.PerspectiveCamera(
+        100, // Abertura da câmera
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000 // Distância de renderização
+      );
+
+      // Posição inicial da câmera
+      camera.position.y = -30;
+      camera.position.z = 5;
+      camera.position.x = 0;
+
+      // Controle pelo mouse
+      controls = new THREE.TrackballControls(camera);
+
+
+      // Monitor de FPS
+      physics_stats = new Stats();
+      physics_stats.domElement.style.position = "absolute";
+      physics_stats.domElement.style.top = "40px";
+      physics_stats.domElement.style.zIndex = 100;
+      container.appendChild(physics_stats.domElement);
+
+      // Inicializando a física na cena e definindo o sentido da gravidade
+      scene = new Physijs.Scene();
+      scene.setGravity(new THREE.Vector3(0, 0, -500));
+
+      // Definindo iluminação
+      var directionalLight = new THREE.DirectionalLight(0xffeedd); // Ponto de luz branca
+      directionalLight.position.set(0, 0, 6);
+      directionalLight.castShadow = true; // Sombreamento
+      scene.add(directionalLight);
+
+      var hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
+      hemiLight.position.set(0, 20, 0);
+      scene.add(hemiLight);
+
+      // Musica
+      var listener = new THREE.AudioListener();
+      camera.add(listener);
+
+      // create a global audio source
+      var sound = new THREE.Audio(listener);
+
+      // load a sound and set it as the Audio object's buffer
+      var audioLoader = new THREE.AudioLoader();
+      audioLoader.load('sounds/music.ogg', function (buffer) {
+        sound.setBuffer(buffer);
+        sound.setLoop(true);
+        sound.setVolume(1);
+        sound.play();
+      });
+
+      // Controle pelo teclado
+      scene.addEventListener("update", function () {
+        if (keyboard.pressed("W")) {
+          power = true;
+          power_value += 0.5;
+          start = true;
+        }
+        if (keyboard.pressed("S")) {
+          power = true;
+          power_value -= 0.5;
+        }
+        if (keyboard.pressed("A")) {
+          power = true;
+          esquiva_value -= 0.5;
+        }
+        if (keyboard.pressed("D")) {
+          power = true;
+          esquiva_value += 0.5;
+        }
+        if (keyboard.pressed("R")) {
+
+          if (mapa1) {
+            esquiva_value = 0;
+            power_value = 0;
+            bola.__dirtyPosition = true;
+            bola.__dirtyRotation = true;
+            bola.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+            bola.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+            bola.position.set(0, 0, 5);
+            bola.rotation.set(0, 0, -3.15);
+
+          } else if (mapa3) {
+            esquiva_value = 0;
+            power_value = 0;
+            bola.__dirtyPosition = true;
+            bola.__dirtyRotation = true;
+            bola.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+            bola.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+            bola.position.set(0, 0, 25);
+            bola.rotation.set(0, 0, -3.15);
+          }
+        }
+
+        /// Vetor de velocidadade
+        if (power) {
+          bola.setLinearVelocity(
+            new THREE.Vector3(esquiva_value, power_value, 0)
+          );
+          power = false;
+          posicao_bola_sky = bola.position.y;
+
+          if (power_value >= 25) power_value = 25;
+          if (power_value < -25) power_value = -25;
+
+        } else {
+          if (esquiva_value > 0) {
+            bola.setLinearVelocity(
+              new THREE.Vector3(esquiva_value, power_value, 0)
+            );
+            esquiva_value -= power_less;
+          }
+          if (esquiva_value < 0) {
+            bola.setLinearVelocity(
+              new THREE.Vector3(esquiva_value, power_value, 0)
+            );
+            esquiva_value += power_less;
+          }
+
+          if (power_value < 0) {
+            bola.setLinearVelocity(
+              new THREE.Vector3(esquiva_value, power_value, 0)
+            );
+            power_value += power_less;
+          }
+
+          if (power_value > 0) {
+            bola.setLinearVelocity(
+              new THREE.Vector3(esquiva_value, power_value, 0)
+            );
+            power_value -= power_less;
+          }
+        }
+
+        // Animação linear inicial da câmera
+        if (start) {
+          render()
+        } else {
+          for (var i = camera.position.y; i <= -5; i++) {
+            camera.position.y += 0.01
+          }
+        }
+
+      });
+
+      // Céu
+      var imagePrefix = "imagens/dawnmountain-";
+      var directions = ["xpos", "xneg", "zpos", "zneg", "ypos", "yneg"];
+      var imageSuffix = ".png";
+      var skyGeometry = new THREE.CubeGeometry(700, 700, 700);
+
+      var materialArray = [];
+      for (var i = 0; i < 6; i++)
+        materialArray.push(new THREE.MeshBasicMaterial({
+          map: THREE.ImageUtils.loadTexture(imagePrefix + directions[i] + imageSuffix),
+          side: THREE.BackSide
+        }));
+      var skyMaterial = new THREE.MeshFaceMaterial(materialArray);
+      var skyBox = new THREE.Mesh(skyGeometry, skyMaterial);
+      scene.add(skyBox);
+
+      // Material para as plataformas
+      var loader_images = new THREE.TextureLoader();
+      ground_material = Physijs.createMaterial(
+        new THREE.MeshPhysicalMaterial({ map: loader_images.load('./imagens/rocks.jpg'), specular: 0x111111, shininess: 200 }),
+        .8,
+        .4
+      );
+
+      // Importando a esfera modelada no Blender
+      var objectLoader = new THREE.ObjectLoader();
+      objectLoader.load("models/textures/model.json", function (obj) {
+        obj.position.z = 0;
+        obj.position.x = 0;
+        obj.position.y = 0;
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+        scene.add(obj);
+
+        // Criando uma invólucro para a esfera
+        var geometry = new THREE.SphereGeometry(0.9, 32, 32);
+        bola = new Physijs.SphereMesh(
+          geometry,
+          ground_material,
+          2 // mass
+        );
+        bola.position.set(0, 0, 2);
+        bola.add(obj);
+        scene.add(bola);
+
+        // Colisão com a malha limite
+        bola.addEventListener("collision", function (
+          collided_with,
+          linearVelocity,
+          angularVelocity
+        ) {
+          if (collided_with == loser) {
+            if (mapa1) {
+
+              esquiva_value = 0;
+              power_value = 0;
+              bola.__dirtyPosition = true;
+              bola.__dirtyRotation = true;
+              bola.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+              bola.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+              bola.position.set(0, 0, 5);
+              bola.rotation.set(0, 0, -3.15);
+
+            }
+            else if (mapa3) {
+              esquiva_value = 0;
+              power_value = 0;
+              mapa1 = false;
+              mapa3 = true;
+              bola.__dirtyPosition = true;
+              bola.__dirtyRotation = true;
+              bola.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+              bola.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+              bola.position.set(0, 0, 25);
+              bola.rotation.set(0, 0, -3.15);
+
+            }
+          }
+
+          if (collided_with == ground_31) {
+            esquiva_value = 0;
+            power_value = 0;
+            mapa1 = false;
+            mapa3 = true;
+            bola.__dirtyPosition = true;
+            bola.__dirtyRotation = true;
+            bola.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+            bola.setAngularVelocity(new THREE.Vector3(0, 0, 0));
+            bola.position.set(0, 0, 25);
+            bola.rotation.set(0, 0, -3.15);
+
+          }
+
+        });
+      });
+
+      // Material das rampas
+      var loader_images = new THREE.TextureLoader();
+			var materialPiso = Physijs.createMaterial(
+				new THREE.MeshPhysicalMaterial({ map: loader_images.load('./imagens/rocks.jpg'), specular: 0x111111, shininess: 200 }),
+				.8,
+				.4 
+			);
+
+      // Primeiro plano
+      var ground_geometry = new THREE.PlaneGeometry(11, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground = new Physijs.BoxMesh(
+        ground_geometry,
+        ground_material,
+        0 // mass
+      );
+      ground.position.y = cenario1_eixo_y + 0;
+      ground.position.z = cenario1_eixo_z + 0;
+      ground.position.x = cenario1_eixo_x + 0;
+
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Mesh de limite de cenario
+      var materialLoser = new THREE.MeshPhysicalMaterial({
+        color: 0x0000ff,
+        transparent: true,
+        opacity: 0,
+        specular: 0x111111,
+        shininess: 200
+      });
+
+      // Plano loser
+      var loser_geometry = new THREE.PlaneGeometry(1000, 1000, 1, 1);
+      loser_geometry.computeFaceNormals();
+      loser_geometry.computeVertexNormals();
+
+      loser = new Physijs.BoxMesh(
+        loser_geometry,
+        materialLoser,
+        0 // mass
+      );
+      loser.position.y = 0;
+      loser.position.z = -10;
+      loser.receiveShadow = true;
+      scene.add(loser);
+
+
+      // Rampas
+
+      ////////////////// RAMPA 1 ///////////////////////////
+
+      var rampa_geometry = new THREE.PlaneGeometry(4, 10, 1, 1);
+      rampa = new Physijs.BoxMesh(
+        rampa_geometry,
+        materialPiso,
+        0 // mass
+      );
+      rampa.position.y = cenario1_eixo_y + 10;
+      rampa.position.x = cenario1_eixo_x + 4;
+      rampa.position.z = cenario1_eixo_z + 0;
+
+      rampa.rotation.x = 0.5;
+      rampa.receiveShadow = true;
+      scene.add(rampa);
+
+      ///// RAMPA 2 /////
+      var rampa_geometry_2 = new THREE.PlaneGeometry(4, 10, 1, 1);
+      rampa_2 = new Physijs.BoxMesh(
+        rampa_geometry_2,
+        materialPiso,
+        0 // mass
+      );
+
+      rampa_2.position.z = cenario1_eixo_z + 0;
+      rampa_2.position.y = cenario1_eixo_y + 10;
+      rampa_2.position.x = cenario1_eixo_x + -4;
+      rampa_2.rotation.x = 0.5;
+      rampa_2.receiveShadow = true;
+      scene.add(rampa_2);
+
+      ///////////////RAMPA 3///////////////////////
+
+      var rampa_geometry_3 = new THREE.PlaneGeometry(11, 4, 1, 1);
+      rampa_3 = new Physijs.BoxMesh(
+        rampa_geometry_3,
+        materialPiso,
+        0 // mass
+      );
+      rampa_3.position.y = cenario1_eixo_y + 43.8;
+      rampa_3.position.z = cenario1_eixo_z + 0.8;
+      rampa_3.rotation.x = 0.5;
+      rampa_3.receiveShadow = true;
+      scene.add(rampa_3);
+
+      ///////////////RAMPA 4///////////////////////
+
+      var rampa_geometry_4 = new THREE.PlaneGeometry(11.5, 4, 1, 1);
+      rampa_4 = new Physijs.BoxMesh(
+        rampa_geometry_4,
+        materialPiso,
+        0 // mass
+      );
+      rampa_4.position.y = cenario1_eixo_y + 63;
+      rampa_4.position.x = cenario1_eixo_x + -21.8;
+      rampa_4.position.z = cenario1_eixo_z + 0.8;
+      rampa_4.rotation.x = 0.5;
+      rampa_4.receiveShadow = true;
+      scene.add(rampa_4);
+
+      ///////////////RAMPA 5///////////////////////
+
+      var rampa_geometry_5 = new THREE.PlaneGeometry(4, 4, 1, 1);
+      rampa_5 = new Physijs.BoxMesh(
+        rampa_geometry_5,
+        materialPiso,
+        0 // mass
+      );
+      rampa_5.position.y = cenario1_eixo_y + 63.5;
+      rampa_5.position.x = cenario1_eixo_x + -14;
+      rampa_5.position.z = cenario1_eixo_z + 0.8;
+      rampa_5.rotation.x = 0.5;
+      rampa_5.rotation.z = 0.2;
+      rampa_5.rotation.y = 0.2;
+      rampa_5.receiveShadow = true;
+      scene.add(rampa_5);
+
+      ///////////////RAMPA 6///////////////////////
+
+      var rampa_geometry_6 = new THREE.PlaneGeometry(4, 9, 1, 1);
+      rampa_6 = new Physijs.BoxMesh(
+        rampa_geometry_6,
+        materialPiso,
+        0 // mass
+      );
+      rampa_6.position.y = cenario1_eixo_y + 74.5;
+      rampa_6.position.x = cenario1_eixo_x + -9;
+      rampa_6.position.z = cenario1_eixo_z + 0.8;
+      rampa_6.rotation.x = 0;
+      rampa_6.rotation.z = 0;
+      rampa_6.rotation.y = 0.5;
+      rampa_6.receiveShadow = true;
+      scene.add(rampa_6);
+
+      ///////////////RAMPA 7///////////////////////
+
+      var rampa_geometry_7 = new THREE.PlaneGeometry(3, 8, 1, 1);
+      rampa_7 = new Physijs.BoxMesh(
+        rampa_geometry_7,
+        materialPiso,
+        0 // mass
+      );
+      rampa_7.position.y = cenario1_eixo_y + 101.5;
+      rampa_7.position.x = cenario1_eixo_x + 0.5;
+      rampa_7.position.z = cenario1_eixo_z + 1.5;
+      rampa_7.rotation.x = 0.5;
+      rampa_7.rotation.z = -0.2;
+      rampa_7.rotation.y = -0.1;
+      rampa_7.receiveShadow = true;
+      scene.add(rampa_7);
+
+      ///////////////RAMPA 7///////////////////////
+
+      var rampa_geometry_8 = new THREE.PlaneGeometry(3, 7, 1, 1);
+      rampa_8 = new Physijs.BoxMesh(
+        rampa_geometry_8,
+        materialPiso,
+        0 // mass
+      );
+      rampa_8.position.y = cenario1_eixo_y + 112.5;
+      rampa_8.position.x = cenario1_eixo_x + 3;
+      rampa_8.position.z = cenario1_eixo_z + 5.1;
+      rampa_8.rotation.x = 0.6;
+      rampa_8.rotation.z = -0.2;
+      rampa_8.rotation.y = -0.1;
+      rampa_8.receiveShadow = true;
+      scene.add(rampa_8);
+
+      ///////////////RAMPA 8///////////////////////
+
+      var rampa_geometry_9 = new THREE.PlaneGeometry(3, 2, 1, 1);
+      rampa_9 = new Physijs.BoxMesh(
+        rampa_geometry_9,
+        materialPiso,
+        0 // mass
+      );
+      rampa_9.position.y = cenario1_eixo_y + 114.5;
+      rampa_9.position.x = cenario1_eixo_x + -9;
+      rampa_9.position.z = cenario1_eixo_z + -8;
+      rampa_9.rotation.x = 0.5;
+      rampa_9.rotation.z = 0;
+      rampa_9.rotation.y = 0;
+      rampa_9.receiveShadow = true;
+      scene.add(rampa_9);
+
+      // Mapas
+
+      ////////// MAPA 2 ////////
+
+      ground_2 = new Physijs.BoxMesh(
+        ground_geometry,
+        ground_material,
+        0 // mass
+      );
+      ground_2.position.y = cenario1_eixo_y + 20;
+      ground_2.position.x = cenario1_eixo_x + 0;
+      ground_2.position.z = cenario1_eixo_z + 0;
+      ground_2.receiveShadow = true;
+      scene.add(ground_2);
+
+      /////////////// MAPA 4 ///////////////////
+
+      var ground_geometry_4 = new THREE.PlaneGeometry(4, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_4 = new Physijs.BoxMesh(
+        ground_geometry_4,
+        ground_material,
+        0 // mass
+      );
+      ground_4.position.y = cenario1_eixo_y + 30;
+      ground_4.position.x = cenario1_eixo_x + 0;
+      ground_4.position.z = cenario1_eixo_z + 0;
+      ground_4.receiveShadow = true;
+      scene.add(ground_4);
+
+      //////////////// MAPA 5 //////////////////////////
+
+      var ground_geometry_5 = new THREE.PlaneGeometry(11, 5, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_5 = new Physijs.BoxMesh(
+        ground_geometry_5,
+        ground_material,
+        0 // mass
+      );
+      ground_5.position.y = cenario1_eixo_y + 40;
+      ground_5.position.x = cenario1_eixo_x + 0;
+      ground_5.position.z = cenario1_eixo_z + 0;
+      ground_5.receiveShadow = true;
+      scene.add(ground_5);
+
+      ////////////////// MAPA 6 //////////////////////////
+      var ground_geometry_6 = new THREE.PlaneGeometry(4, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_6 = new Physijs.BoxMesh(
+        ground_geometry_6,
+        ground_material,
+        0 // mass
+      );
+      ground_6.position.y = cenario1_eixo_y + 60;
+      ground_6.position.x = cenario1_eixo_x + 4;
+      ground_6.position.z = cenario1_eixo_z + 0;
+      ground_6.receiveShadow = true;
+      scene.add(ground_6);
+
+      ////////////////// MAPA 8 //////////////////////////
+      var ground_geometry_8 = new THREE.PlaneGeometry(4, 8, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_8 = new Physijs.BoxMesh(
+        ground_geometry_8,
+        ground_material,
+        0 // mass
+      );
+      ground_8.position.y = cenario1_eixo_y + 58;
+      ground_8.position.x = cenario1_eixo_x + -4;
+      ground_8.position.z = cenario1_eixo_z + 0;
+      ground_8.receiveShadow = true;
+      scene.add(ground_8);
+
+      ////////////////////// MAPA 9 //////////////////////////////////
+      var ground_geometry_9 = new THREE.PlaneGeometry(14, 10, 1, 1);
+
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_9 = new Physijs.BoxMesh(
+        ground_geometry_9,
+        ground_material,
+        0 // mass
+      );
+      ground_9.position.y = cenario1_eixo_y + 58;
+      ground_9.position.x = cenario1_eixo_x + -9;
+      ground_9.position.z = cenario1_eixo_z + 0;
+
+      ground_9.receiveShadow = true;
+      scene.add(ground_9);
+
+      /////////////// MAPA 10 ///////////////////
+
+      var ground_geometry_10 = new THREE.PlaneGeometry(11, 5, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_10 = new Physijs.BoxMesh(
+        ground_geometry_10,
+        ground_material,
+        0 // mass
+      );
+      ground_10.position.y = cenario1_eixo_y + 70;
+      ground_10.position.x = cenario1_eixo_x + 0;
+      ground_10.position.z = cenario1_eixo_z + 0;
+      ground_10.receiveShadow = true;
+      scene.add(ground_10);
+
+      /////////////////// MAPA 11 /////////////////////////
+
+      var ground_geometry_11 = new THREE.PlaneGeometry(15, 5, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_11 = new Physijs.BoxMesh(
+        ground_geometry_11,
+        ground_material,
+        0 // mass
+      );
+      ground_11.position.y = cenario1_eixo_y + 59;
+      ground_11.position.x = cenario1_eixo_x + -20;
+      ground_11.position.z = cenario1_eixo_z + 0;
+      ground_11.receiveShadow = true;
+      scene.add(ground_11);
+
+      /////////////// MAPA 12 ///////////////////
+
+      var ground_geometry_12 = new THREE.PlaneGeometry(10, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_12 = new Physijs.BoxMesh(
+        ground_geometry_12,
+        ground_material,
+        0 // mass
+      );
+      ground_12.position.y = cenario1_eixo_y + 75;
+      ground_12.position.x = cenario1_eixo_x + -20;
+      ground_12.position.z = cenario1_eixo_z + 0;
+      ground_12.receiveShadow = true;
+      scene.add(ground_12);
+
+      ////////////////// MAPA 13 //////////////////////////
+      var ground_geometry_13 = new THREE.PlaneGeometry(4, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_13 = new Physijs.BoxMesh(
+        ground_geometry_13,
+        ground_material,
+        0 // mass
+      );
+      ground_13.position.y = cenario1_eixo_y + 80;
+      ground_13.position.x = cenario1_eixo_x + -6;
+      ground_13.position.z = cenario1_eixo_z + 0;
+      ground_13.receiveShadow = true;
+      scene.add(ground_13);
+
+      ////////////////// MAPA 14 //////////////////////////
+      var ground_geometry_14 = new THREE.PlaneGeometry(4, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_14 = new Physijs.BoxMesh(
+        ground_geometry_14,
+        ground_material,
+        0 // mass
+      );
+      ground_14.position.y = cenario1_eixo_y + 100;
+      ground_14.position.x = cenario1_eixo_x + -10;
+      ground_14.position.z = cenario1_eixo_z + -4;
+      ground_14.receiveShadow = true;
+      scene.add(ground_14);
+
+      ////////////////// MAPA 15 //////////////////////////
+      var ground_geometry_15 = new THREE.PlaneGeometry(6, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_15 = new Physijs.BoxMesh(
+        ground_geometry_15,
+        ground_material,
+        0 // mass
+      );
+      ground_15.position.y = cenario1_eixo_y + 98;
+      ground_15.position.x = cenario1_eixo_x + -1;
+      ground_15.position.z = cenario1_eixo_z + 0;
+      ground_15.receiveShadow = true;
+      scene.add(ground_15);
+
+      ////////////////// MAPA 16 //////////////////////////
+      var ground_geometry_16 = new THREE.PlaneGeometry(10, 7, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_16 = new Physijs.BoxMesh(
+        ground_geometry_16,
+        ground_material,
+        0 // mass
+      );
+      ground_16.position.y = cenario1_eixo_y + 100;
+      ground_16.position.x = cenario1_eixo_x + -15;
+      ground_16.position.z = cenario1_eixo_z + 0;
+      ground_16.receiveShadow = true;
+      scene.add(ground_16);
+
+      ////////////////// MAPA 17 //////////////////////////
+      var ground_geometry_17 = new THREE.PlaneGeometry(7, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_17 = new Physijs.BoxMesh(
+        ground_geometry_17,
+        ground_material,
+        0 // mass
+      );
+      ground_17.position.y = cenario1_eixo_y + 100;
+      ground_17.position.x = cenario1_eixo_x + -23;
+      ground_17.position.z = cenario1_eixo_z + 0;
+      ground_17.receiveShadow = true;
+      scene.add(ground_17);
+
+      ////////////////// MAPA 18 //////////////////////////
+      var ground_geometry_18 = new THREE.PlaneGeometry(0.2, 20, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_18 = new Physijs.BoxMesh(
+        ground_geometry_18,
+        ground_material,
+        0 // mass
+      );
+      ground_18.position.y = cenario1_eixo_y + 90;
+      ground_18.position.x = cenario1_eixo_x + -23;
+      ground_18.position.z = cenario1_eixo_z + 0;
+      ground_18.receiveShadow = true;
+      scene.add(ground_18);
+
+      ////////////////// MAPA 19 //////////////////////////
+      var ground_geometry_19 = new THREE.PlaneGeometry(7, 15, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_19 = new Physijs.BoxMesh(
+        ground_geometry_19,
+        ground_material,
+        0 // mass
+      );
+      ground_19.position.y = cenario1_eixo_y + 112;
+      ground_19.position.x = cenario1_eixo_x + 3.7;
+      ground_19.position.z = cenario1_eixo_z + 3.2;
+
+      ground_19.rotation.x = cenario1_eixo_x + 0;
+
+      ground_19.receiveShadow = true;
+      scene.add(ground_19);
+
+      ////////////////// MAPA 20 //////////////////////////
+      var ground_geometry_20 = new THREE.PlaneGeometry(7, 8, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_20 = new Physijs.BoxMesh(
+        ground_geometry_20,
+        ground_material,
+        0 // mass
+      );
+      ground_20.position.y = cenario1_eixo_y + 119;
+      ground_20.position.x = cenario1_eixo_x + 7;
+      ground_20.position.z = cenario1_eixo_z + 7;
+
+      ground_20.rotation.x = cenario1_eixo_x + 0;
+
+      ground_20.receiveShadow = true;
+      scene.add(ground_20);
+
+      ////////////////// MAPA 21 penultima plataforma //////////////////////////
+      var ground_geometry_21 = new THREE.PlaneGeometry(10, 5, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_21 = new Physijs.BoxMesh(
+        ground_geometry_21,
+        ground_material,
+        0 // mass
+      );
+      ground_21.position.y = cenario1_eixo_y + 145;
+      ground_21.position.x = cenario1_eixo_x + -10;
+      ground_21.position.z = cenario1_eixo_z + 0;
+
+      ground_21.rotation.x = cenario1_eixo_x + 0;
+
+      ground_21.receiveShadow = true;
+      scene.add(ground_21);
+
+      ////////////////// MAPA 22 //////////////////////////
+      var ground_geometry_22 = new THREE.PlaneGeometry(3, 5, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_22 = new Physijs.BoxMesh(
+        ground_geometry_22,
+        ground_material,
+        0 // mass
+      );
+      ground_22.position.y = cenario1_eixo_y + 112;
+      ground_22.position.x = cenario1_eixo_x + -9;
+      ground_22.position.z = cenario1_eixo_z + -8;
+
+      ground_22.rotation.x = cenario1_eixo_x + 0;
+
+      ground_22.receiveShadow = true;
+      scene.add(ground_22);
+
+      ////////////////// MAPA 23 //////////////////////////
+      var ground_geometry_23 = new THREE.PlaneGeometry(3, 7, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_23 = new Physijs.BoxMesh(
+        ground_geometry_23,
+        ground_material,
+        0 // mass
+      );
+      ground_23.position.y = cenario1_eixo_y + 123;
+      ground_23.position.x = cenario1_eixo_x + -9;
+      ground_23.position.z = cenario1_eixo_z + -7;
+
+      ground_23.rotation.x = cenario1_eixo_x + 0.5;
+
+      ground_23.receiveShadow = true;
+      scene.add(ground_23);
+
+      ////////////////// MAPA 24 //////////////////////////
+      var ground_geometry_24 = new THREE.PlaneGeometry(5, 16, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_24 = new Physijs.BoxMesh(
+        ground_geometry_24,
+        ground_material,
+        0 // mass
+      );
+      ground_24.position.y = cenario1_eixo_y + 136;
+      ground_24.position.x = cenario1_eixo_x + -8;
+      ground_24.position.z = cenario1_eixo_z + -4.5;
+
+      ground_24.rotation.x = cenario1_eixo_x + 0.6;
+
+      ground_24.receiveShadow = true;
+      scene.add(ground_24);
+
+      ////////////////// MAPA 25 planos finais curvados //////////////////////////
+      var ground_geometry_25 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_25 = new Physijs.BoxMesh(
+        ground_geometry_25,
+        ground_material,
+        0 // mass
+      );
+      ground_25.position.y = cenario1_eixo_y + 125;
+      ground_25.position.x = cenario1_eixo_x + 15;
+      ground_25.position.z = cenario1_eixo_z + 8;
+
+      ground_25.rotation.x = cenario1_eixo_x + 0;
+      ground_25.rotation.z = cenario1_eixo_z + -0.3;
+      ground_25.rotation.y = cenario1_eixo_y + -0.3;
+
+      ground_25.receiveShadow = true;
+      scene.add(ground_25);
+
+      ////////////////// MAPA 26 planos finais curvados//////////////////////////
+      var ground_geometry_26 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_26 = new Physijs.BoxMesh(
+        ground_geometry_26,
+        ground_material,
+        0 // mass
+      );
+      ground_26.position.y = cenario1_eixo_y + 135;
+      ground_26.position.x = cenario1_eixo_x + 15;
+      ground_26.position.z = cenario1_eixo_z + 7;
+
+      ground_26.rotation.x = cenario1_eixo_x + 0;
+      ground_26.rotation.z = cenario1_eixo_z + 0.2;
+      ground_26.rotation.y = cenario1_eixo_y + -0.5;
+
+      ground_26.receiveShadow = true;
+      scene.add(ground_26);
+
+      ////////////////// MAPA 27 planos finais curvados//////////////////////////
+      var ground_geometry_27 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_27 = new Physijs.BoxMesh(
+        ground_geometry_27,
+        ground_material,
+        0 // mass
+      );
+      ground_27.position.y = cenario1_eixo_y + 140;
+      ground_27.position.x = cenario1_eixo_x + 12;
+      ground_27.position.z = cenario1_eixo_z + 5;
+
+      ground_27.rotation.x = cenario1_eixo_x + 0;
+      ground_27.rotation.z = cenario1_eixo_z + 0.5;
+      ground_27.rotation.y = cenario1_eixo_y + -0.5;
+
+      ground_27.receiveShadow = true;
+      scene.add(ground_27);
+
+      ////////////////// MAPA 28 planos finais curvados//////////////////////////
+      var ground_geometry_28 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_28 = new Physijs.BoxMesh(
+        ground_geometry_28,
+        ground_material,
+        0 // mass
+      );
+      ground_28.position.y = cenario1_eixo_y + 145;
+      ground_28.position.x = cenario1_eixo_x + 8;
+      ground_28.position.z = cenario1_eixo_z + 3;
+
+      ground_28.rotation.x = cenario1_eixo_x + 0;
+      ground_28.rotation.z = cenario1_eixo_z + 0.8;
+      ground_28.rotation.y = cenario1_eixo_y + -0.3;
+
+      ground_28.receiveShadow = true;
+      scene.add(ground_28);
+
+      ////////////////// MAPA 29 planos finais curvados//////////////////////////
+
+      var ground_geometry_29 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_29 = new Physijs.BoxMesh(
+        ground_geometry_29,
+        ground_material,
+        0 // mass
+      );
+      ground_29.position.y = cenario1_eixo_y + 145;
+      ground_29.position.x = cenario1_eixo_x + 3;
+      ground_29.position.z = cenario1_eixo_z + 2;
+
+      ground_29.rotation.x = cenario1_eixo_x + 0;
+      ground_29.rotation.z = cenario1_eixo_z + 1.5;
+      ground_29.rotation.y = cenario1_eixo_y + -0.2;
+
+      ground_29.receiveShadow = true;
+      scene.add(ground_29);
+
+      ////////////////// MAPA 30 linha para o fim //////////////////////////
+      var ground_geometry_30 = new THREE.PlaneGeometry(.9, 21, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_30 = new Physijs.BoxMesh(
+        ground_geometry_30,
+        ground_material,
+        0 // mass
+      );
+      ground_30.position.y = cenario1_eixo_y + 155;
+      ground_30.position.x = cenario1_eixo_x + -10;
+      ground_30.position.z = cenario1_eixo_z + 5;
+
+      ground_30.rotation.x = cenario1_eixo_x + 0.6;
+      ground_30.rotation.y = cenario1_eixo_y + 0;
+      ground_30.rotation.z = cenario1_eixo_z + 0;
+
+      ground_30.receiveShadow = true;
+      scene.add(ground_30);
+
+      ////////////////// MAPA 31  DA PLATAFORMA FINAL ////////////////////////// [ULTIMO MAPA]
+      var ground_material_31 = new THREE.MeshPhysicalMaterial({ color: 0xC81B1B, transparent: true, opacity: 1 });
+      var ground_geometry_31 = new THREE.PlaneGeometry(11, 10, 1, 1);
+      ground_geometry.computeFaceNormals();
+      ground_geometry.computeVertexNormals();
+
+      ground_31 = new Physijs.BoxMesh(
+        ground_geometry_31,
+        ground_material_31,
+        0 // mass
+      );
+      ground_31.position.y = cenario1_eixo_y + 168.5;
+      ground_31.position.x = cenario1_eixo_x + -10;
+      ground_31.position.z = cenario1_eixo_z + 11;
+      ground_31.receiveShadow = true;
+      scene.add(ground_31);
+
+
+      ///// FASE 2 /////////
+
+      planos_geometry.c3_ground_geometry = new THREE.PlaneGeometry(10, 20, 1, 1);
+      planos_geometry.c3_ground_geometry.receiveShadow = true;
+      planos_geometry.c3_ground_geometry.castShadow = true;
+
+      planos_geometry.c3_ground_geometry.computeFaceNormals();
+      planos_geometry.c3_ground_geometry.computeVertexNormals();
+
+      planos_obj.c3_ground_2 = new Physijs.BoxMesh(
+        planos_geometry.c3_ground_geometry,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_2.position.y = cenario3_axis_y + 0;
+      planos_obj.c3_ground_2.position.x = cenario3_axis_x;
+      planos_obj.c3_ground_2.position.z = cenario3_axis_z;
+      scene.add(planos_obj.c3_ground_2);
+
+      ////////////////////////////////////////////////////////////////////
+      planos_geometry.c3_ground_geometry_2 = new THREE.PlaneGeometry(10, 20, 1, 1);
+      planos_geometry.c3_ground_geometry_2.receiveShadow = true;
+      planos_geometry.c3_ground_geometry_2.castShadow = true;
+
+      planos_geometry.c3_ground_geometry_2.computeFaceNormals();
+      planos_geometry.c3_ground_geometry_2.computeVertexNormals();
+
+      planos_obj.c3_ground_2 = new Physijs.BoxMesh(
+        planos_geometry.c3_ground_geometry_2,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_2.position.y = cenario3_axis_y + 20;
+      planos_obj.c3_ground_2.position.x = cenario3_axis_x;
+      planos_obj.c3_ground_2.position.z = cenario3_axis_z - 10;
+      scene.add(planos_obj.c3_ground_2);
+
+      //////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      planos_geometry.c3_ground_geometry_3 = new THREE.PlaneGeometry(4, 30, 1, 1);
+
+      planos_obj.c3_ground_3 = new Physijs.BoxMesh(
+        planos_geometry.c3_ground_geometry_3,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_3.position.y = cenario3_axis_y + 40;
+      planos_obj.c3_ground_3.position.x = cenario3_axis_x + -10;
+      planos_obj.c3_ground_3.position.z = cenario3_axis_z + 0;
+      planos_obj.c3_ground_3.rotation.y = 0.5;
+      planos_obj.c3_ground_3.receiveShadow = true;
+      scene.add(planos_obj.c3_ground_3);
+
+      ///////////////////////
+      planos_geometry.ground_geometry_4 = new THREE.PlaneGeometry(10, 20, 1, 1);
+      planos_geometry.ground_geometry_4.receiveShadow = true;
+      planos_geometry.ground_geometry_4.castShadow = true;
+
+      planos_obj.c3_ground_5 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_4,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_5.position.y = cenario3_axis_y + 70;
+      planos_obj.c3_ground_5.position.x = cenario3_axis_x;
+      planos_obj.c3_ground_5.position.z = cenario3_axis_z;
+      scene.add(planos_obj.c3_ground_5);
+
+      ////////////////////////////////////////
+
+      planos_geometry.ground_geometry_6 = new THREE.PlaneGeometry(20, 2, 1, 1);
+      planos_geometry.ground_geometry_6.receiveShadow = true;
+      planos_geometry.ground_geometry_6.castShadow = true;
+
+      planos_obj.c3_ground_6 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_6,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_6.position.y = cenario3_axis_y + 80;
+      planos_obj.c3_ground_6.position.x = cenario3_axis_x - 15;
+      planos_obj.c3_ground_6.position.z = cenario3_axis_z;
+      planos_obj.c3_ground_6.rotation.z = -90;
+
+      planos_obj.c3_ground_6.rotation.z = 0;
+      scene.add(planos_obj.c3_ground_6);
+
+      /////////////////////
+
+      planos_geometry.ground_geometry_7 = new THREE.PlaneGeometry(1, 20, 1, 1);
+      planos_geometry.ground_geometry_7.receiveShadow = true;
+      planos_geometry.ground_geometry_7.castShadow = true;
+
+      planos_obj.c3_ground_7 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_7,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_7.position.y = cenario3_axis_y + 95;
+      planos_obj.c3_ground_7.position.x = cenario3_axis_x - 25;
+      planos_obj.c3_ground_7.position.z = cenario3_axis_z;
+      planos_obj.c3_ground_7.rotation.z = -90;
+      planos_obj.c3_ground_7.rotation.x = .5;
+
+      planos_obj.c3_ground_7.rotation.z = 0;
+      scene.add(planos_obj.c3_ground_7);
+
+      ////////////////////////////////
+
+      planos_geometry.ground_geometry_8 = new THREE.PlaneGeometry(20, 10, 1, 1);
+      planos_geometry.ground_geometry_8.receiveShadow = true;
+      planos_geometry.ground_geometry_8.castShadow = true;
+
+      planos_obj.c3_ground_8 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_8,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_8.position.y = cenario3_axis_y + 110;
+      planos_obj.c3_ground_8.position.x = cenario3_axis_x - 25;
+      planos_obj.c3_ground_8.position.z = cenario3_axis_z + 5;
+
+      planos_obj.c3_ground_8.rotation.z = 1.0;
+      planos_obj.c3_ground_8.rotation.x = 1.0;
+
+      planos_obj.c3_ground_8.rotation.z = 0;
+      scene.add(planos_obj.c3_ground_8);
+
+
+      ///////////////////////////////////
+
+      planos_geometry.ground_geometry_9 = new THREE.PlaneGeometry(10, 10, 1, 1);
+      planos_geometry.ground_geometry_9.receiveShadow = true;
+      planos_geometry.ground_geometry_9.castShadow = true;
+
+      planos_obj.c3_ground_9 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_9,
+        ground_material,
+        0 // mass
+      );
+      planos_obj.c3_ground_9.position.y = cenario3_axis_y + 110;
+      planos_obj.c3_ground_9.position.x = cenario3_axis_x - 10;
+      planos_obj.c3_ground_9.position.z = cenario3_axis_z + 5;
+
+      planos_obj.c3_ground_9.rotation.x = .1;
+
+      planos_obj.c3_ground_9.rotation.z = 0;
+      scene.add(planos_obj.c3_ground_9);
+
+      ///////////////////////// plataforma FINAL cenário 3 ////////////////
+
+      var ground_material = new THREE.MeshPhysicalMaterial({ color: 0xC81B1B, transparent: true, opacity: 1 });
+
+      planos_geometry.ground_geometry_10 = new THREE.PlaneGeometry(10, 10, 1, 1);
+      planos_geometry.ground_geometry_10.receiveShadow = true;
+      planos_geometry.ground_geometry_10.castShadow = true;
+
+      planos_obj.c3_ground_10 = new Physijs.BoxMesh(
+        planos_geometry.ground_geometry_10,
+        ground_material,
+        0 // mass
+      );
+
+      planos_obj.c3_ground_10.position.y = cenario3_axis_y + 120;
+      planos_obj.c3_ground_10.position.x = cenario3_axis_x;
+      planos_obj.c3_ground_10.position.z = cenario3_axis_z + 5;
+
+      planos_obj.c3_ground_10.rotation.z = 0;
+      planos_obj.c3_ground_10.rotation.x = 0.1;
+      scene.add(planos_obj.c3_ground_10);
+
+      /////////////////////	RAMPAS //////////////////////////
+      var c1_rampa_geometry = new THREE.PlaneGeometry(5, 10, 1, 1);
+      c1_rampa = new Physijs.BoxMesh(
+        c1_rampa_geometry,
+        materialPiso,
+        0 // mass
+      );
+      c1_rampa.position.y = cenario3_axis_y + 9;
+      c1_rampa.rotation.x = cenario3_axis_x + .5;
+      c1_rampa.position.z = cenario3_axis_z;
+
+      c1_rampa.receiveShadow = true;
+      scene.add(c1_rampa);
+
+      //////////////////////////////////////
+
+      var c1_rampa_geometry_2 = new THREE.PlaneGeometry(8, 10, 1, 1);
+      c1_rampa_2 = new Physijs.BoxMesh(
+        c1_rampa_geometry_2,
+        materialPiso,
+        0 // mass
+      );
+      c1_rampa_2.position.y = cenario3_axis_y + 52;
+      c1_rampa_2.position.z = cenario3_axis_z;
+      c1_rampa_2.position.x = cenario3_axis_x - 1.5;
+
+      c1_rampa_2.rotation.x = cenario3_axis_x + .5;
+      c1_rampa_2.rotation.z = cenario3_axis_x + -.5;
+
+      c1_rampa_2.receiveShadow = true;
+      scene.add(c1_rampa_2);
+
+
+      // Instanciando função de rendericação
+      renderer = new THREE.WebGLRenderer();
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      // Pegando o tamanho da tela, caso redimencione ajusta automaticamente
+      var altura = window.innerWidth - 20;
+      var largura = window.innerHeight - 20;
+      renderer.setSize(altura, largura);
+      container.appendChild(renderer.domElement);
+
+      var axes = new THREE.AxisHelper(5);
+      scene.add(axes);
+
+      // Esperando um evento de redimencionamento para chamar a função resize
+      window.addEventListener("resize", resize, false);
+    }
+
+    // Ajustando o tamanho do render, de acordo com o novo tamanho da tela
+    function resize() {
+      var altura = window.innerWidth - 20;
+      var largura = window.innerHeight - 20;
+      camera.aspect = altura / largura;
+      camera.updateProjectionMatrix();
+      renderer.setSize(altura, largura);
+    }
+
+    // Função de atualização de cena
+    function animate() {
+      requestAnimationFrame(animate);
+      render();
+      update();
+    }
+
+    // Definição de posição da câmera
+    function render() {
+      if (start) {
+        camera.position.copy(bola.position).add(new THREE.Vector3(0, -5, 2));
+        camera.lookAt(bola.position);
+      }
+      renderer.render(scene, camera);
+    }
+
+    function update() {
+      controls.update();
+      scene.simulate(undefined, 2);
+      physics_stats.update();
+    }
+
+  </script>
+</body>
+
+</html>
